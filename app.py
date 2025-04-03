@@ -420,6 +420,7 @@ st.markdown("</div>", unsafe_allow_html=True)
 
 # Create tabs for different functionalities
 tabs = st.tabs(["📋 ATS Analysis", "📊 JD Summarizer", "👥 Candidate Management", "📅 Interview Scheduler"])
+tabs = st.tabs(["Tab 1", "Tab 2", "Tab 3", "Tab 4"])
 
 # Tab 1: ATS Analysis
 with tabs[0]:
