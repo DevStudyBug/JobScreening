@@ -1,4 +1,4 @@
-[19:18, 03/04/2025] Ishaan Ltce: import streamlit as st
+import streamlit as st
 import google.generativeai as genai
 import os
 import PyPDF2 as pdf
