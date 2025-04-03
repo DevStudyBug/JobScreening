@@ -4,5 +4,3 @@ python-dotenv
 PyPDF2
 requests
 pandas
-smtplib
-email
