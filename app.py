@@ -408,7 +408,7 @@ import re
 
 # Page configuration
 st.set_page_config(
-    page_title="RecruitEase | Multi-Agent Recruiting System",
+    page_title="HirEase | Multi-Agent Recruiting System",
     page_icon="👥",
     layout="wide",
     initial_sidebar_state="expanded"
