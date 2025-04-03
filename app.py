@@ -658,8 +658,8 @@ with st.sidebar:
         st.experimental_rerun()
     
     # Settings
-    st.markdown("### ⚙️ Settings")
-    st.session_state['debug_mode'] = st.checkbox("Enable Debug Mode", st.session_state['debug_mode'])
+    # st.markdown("### ⚙️ Settings")
+    # st.session_state['debug_mode'] = st.checkbox("Enable Debug Mode", st.session_state['debug_mode'])
     
     # About
     st.markdown("### ℹ️ About HirEase ")
