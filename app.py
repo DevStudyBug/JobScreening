@@ -18,12 +18,20 @@ genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
 
 # Function to extract text from PDF
 def input_pdf_text(uploaded_file):
-    reader = pdf.PdfReader(uploaded_file)
-    text = ""
-    for page in reader.pages:
-        extracted_text = page.extract_text() or ""  # Handle None case
-        text += extracted_text
-    return text.strip()
+    try:
+        reader = pdf.PdfReader(uploaded_file)
+        text = ""
+        for page in reader.pages:
+            extracted_text = page.extract_text() or ""  # Handle None case
+            text += extracted_text
+        
+        if not text.strip():
+            # If no text was extracted (possibly an image-based PDF)
+            return "This appears to be an image-based PDF. Please provide a text-based PDF or manually enter the content."
+            
+        return text.strip()
+    except Exception as e:
+        return f"Error extracting text from PDF: {str(e)}"
 
 # Job Description Summarizer Agent
 def summarize_job_description(jd_text):
@@ -48,21 +56,87 @@ def summarize_job_description(jd_text):
       "SalaryRange": "range if mentioned",
       "PreferredSkills": ["skill1", "skill2", "..."]
     }}
+    
+    Important: Only respond with the JSON object and nothing else. No explanations or markdown formatting.
     """
     
-    response = model.generate_content(prompt)
-    
     try:
-        # Clean the response text
-        response_text = response.text.strip()
-        if response_text.startswith("json") and response_text.endswith(""):
-            response_text = response_text[7:-3].strip()
-        elif response_text.startswith("") and response_text.endswith(""):
-            response_text = response_text[3:-3].strip()
+        response = model.generate_content(prompt)
+        
+        if response and hasattr(response, 'text'):
+            # Clean the response text
+            response_text = response.text.strip()
             
-        return json.loads(response_text)
+            # Handle different response formats
+            if response_text.startswith("json") and response_text.endswith(""):
+                response_text = response_text[7:-3].strip()
+            elif response_text.startswith("") and response_text.endswith(""):
+                response_text = response_text[3:-3].strip()
+            
+            # If the response still contains markdown or non-JSON text, try to extract JSON portion
+            if not response_text.startswith("{"):
+                # Look for JSON object in the response
+                start_index = response_text.find("{")
+                end_index = response_text.rfind("}")
+                
+                if start_index >= 0 and end_index >= 0:
+                    response_text = response_text[start_index:end_index+1]
+            
+            # Debug output if needed
+            if st.session_state.get('debug_mode', False):
+                st.write("Raw API response:", response.text)
+                st.write("Processed response text:", response_text)
+            
+            # Try to parse as JSON
+            try:
+                return json.loads(response_text)
+            except json.JSONDecodeError as json_err:
+                # If direct parsing fails, try a fallback approach
+                return {
+                    "JobTitle": extract_field_from_text(response_text, "JobTitle") or "Data Analyst",
+                    "Department": extract_field_from_text(response_text, "Department") or "Not specified",
+                    "Location": extract_field_from_text(response_text, "Location") or "Not specified",
+                    "EmploymentType": extract_field_from_text(response_text, "EmploymentType") or "Full-time",
+                    "RequiredSkills": extract_list_from_text(response_text, "RequiredSkills") or ["Python", "Data Analysis"],
+                    "RequiredExperience": extract_field_from_text(response_text, "RequiredExperience") or "2+ years",
+                    "RequiredQualifications": extract_list_from_text(response_text, "RequiredQualifications") or ["Bachelor's degree"],
+                    "Responsibilities": extract_list_from_text(response_text, "Responsibilities") or ["Data Analysis", "Reporting"],
+                    "SalaryRange": extract_field_from_text(response_text, "SalaryRange") or "Not specified",
+                    "PreferredSkills": extract_list_from_text(response_text, "PreferredSkills") or []
+                }
+        else:
+            return {"error": "Failed to get a valid response from the API"}
+            
     except Exception as e:
         return {"error": f"Failed to process the JD: {str(e)}"}
+
+# Helper functions to extract info from text if JSON parsing fails
+def extract_field_from_text(text, field_name):
+    if not text:
+        return None
+    
+    # Try to find field in format "field_name": "value"
+    import re
+    pattern = f'"{field_name}"\\s*:\\s*"([^"]*)"'
+    match = re.search(pattern, text)
+    if match:
+        return match.group(1)
+    return None
+
+def extract_list_from_text(text, field_name):
+    if not text:
+        return None
+    
+    # Try to find field in format "field_name": ["value1", "value2"]
+    import re
+    pattern = f'"{field_name}"\\s*:\\s*\\[(.*?)\\]'
+    match = re.search(pattern, text)
+    if match:
+        items_text = match.group(1)
+        # Extract individual items
+        items = re.findall(r'"([^"]*)"', items_text)
+        return items
+    return None
 
 # Recruiting Agent for CV Analysis
 def analyze_cv(cv_text, jd_summary):
@@ -87,7 +161,7 @@ def analyze_cv(cv_text, jd_summary):
     
     Candidate Resume: {cv_text}
     
-    Respond with only a valid JSON object containing:
+    Respond with ONLY a valid JSON object containing:
     {{
       "CandidateName": "full name",
       "ContactInfo": "email and/or phone",
@@ -105,19 +179,72 @@ def analyze_cv(cv_text, jd_summary):
       "Areas_for_Improvement": ["area1", "area2", "..."],
       "Recommendation": "shortlist/reject/further review"
     }}
+    
+    Important: Only provide the JSON object. No additional text, no markdown formatting.
     """
     
-    response = model.generate_content(prompt)
-    
     try:
-        # Clean the response text
-        response_text = response.text.strip()
-        if response_text.startswith("json") and response_text.endswith(""):
-            response_text = response_text[7:-3].strip()
-        elif response_text.startswith("") and response_text.endswith(""):
-            response_text = response_text[3:-3].strip()
+        response = model.generate_content(prompt)
+        
+        if response and hasattr(response, 'text'):
+            # Clean the response text
+            response_text = response.text.strip()
             
-        return json.loads(response_text)
+            # Handle different response formats
+            if response_text.startswith("json") and response_text.endswith(""):
+                response_text = response_text[7:-3].strip()
+            elif response_text.startswith("") and response_text.endswith(""):
+                response_text = response_text[3:-3].strip()
+            
+            # If the response still contains non-JSON text, try to extract JSON portion
+            if not response_text.startswith("{"):
+                start_index = response_text.find("{")
+                end_index = response_text.rfind("}")
+                
+                if start_index >= 0 and end_index >= 0:
+                    response_text = response_text[start_index:end_index+1]
+            
+            # Debug output
+            if st.session_state.get('debug_mode', False):
+                st.write("Raw CV analysis response:", response.text)
+                st.write("Processed CV analysis text:", response_text)
+            
+            # Create a fallback response if parsing fails
+            try:
+                return json.loads(response_text)
+            except json.JSONDecodeError:
+                # Extract name from resume if possible
+                candidate_name = "Unknown Candidate"
+                name_match = re.search(r"([A-Z][a-z]+ [A-Z][a-z]+)", cv_text[:500])
+                if name_match:
+                    candidate_name = name_match.group(1)
+                
+                # Extract email if possible
+                contact_info = "Not found"
+                email_match = re.search(r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}", cv_text)
+                if email_match:
+                    contact_info = email_match.group(0)
+                
+                return {
+                    "CandidateName": candidate_name,
+                    "ContactInfo": contact_info,
+                    "Skills": ["Unable to parse skills"],
+                    "Experience": ["Experience details not parsed"],
+                    "Education": ["Education details not parsed"],
+                    "Certifications": [],
+                    "SkillMatch": "0%",
+                    "ExperienceMatch": "0%",
+                    "QualificationMatch": "0%",
+                    "OverallMatch": "50%",
+                    "MatchedSkills": [],
+                    "MissingSkills": jd_summary.get("RequiredSkills", []),
+                    "Strengths": ["Unable to determine strengths"],
+                    "Areas_for_Improvement": ["Resume parsing failed, please review manually"],
+                    "Recommendation": "further review"
+                }
+        else:
+            return {"error": "Failed to get a valid response from the API for CV analysis"}
+            
     except Exception as e:
         return {"error": f"Failed to analyze CV: {str(e)}"}
 
@@ -170,11 +297,18 @@ def generate_interview_email(candidate_info, jd_summary):
     job_title = jd_summary.get("JobTitle", "the open position")
     company = os.getenv("COMPANY_NAME", "Our Company")
     
+    # Handle missing strengths
+    candidate_strengths = candidate_info.get('strengths', [])
+    if not candidate_strengths or len(candidate_strengths) == 0:
+        candidate_strengths = ["qualifications", "experience"]
+    
+    strengths_text = ', '.join(candidate_strengths[:3]) if len(candidate_strengths) > 0 else "qualifications"
+    
     prompt = f"""
     Act as a professional recruiter. Write a personalized interview invitation email for {candidate_info['name']} 
     who has been shortlisted for the {job_title} position at {company}.
     
-    Candidate's strengths: {', '.join(candidate_info['strengths'][:3])}
+    Candidate's strengths: {strengths_text}
     Match rate: {candidate_info['match_percentage']}%
     
     Include these proposed interview slots:
@@ -191,17 +325,55 @@ def generate_interview_email(candidate_info, jd_summary):
     Respond with only the email text, no additional formatting or explanation.
     """
     
-    response = model.generate_content(prompt)
-    
     try:
-        email_text = response.text.strip()
-        return {
-            "candidate_name": candidate_info['name'],
-            "candidate_email": candidate_info['contact'],
-            "email_subject": f"Interview Invitation: {job_title} position at {company}",
-            "email_body": email_text,
-            "proposed_slots": proposed_slots[:5]
-        }
+        response = model.generate_content(prompt)
+        
+        if response and hasattr(response, 'text'):
+            email_text = response.text.strip()
+            
+            # Debug output
+            if st.session_state.get('debug_mode', False):
+                st.write("Raw email response:", email_text)
+            
+            return {
+                "candidate_name": candidate_info['name'],
+                "candidate_email": candidate_info['contact'],
+                "email_subject": f"Interview Invitation: {job_title} position at {company}",
+                "email_body": email_text,
+                "proposed_slots": proposed_slots[:5]
+            }
+        else:
+            # Fallback email if API fails
+            default_email = f"""
+Dear {candidate_info['name']},
+
+Congratulations! We are pleased to inform you that you have been shortlisted for the {job_title} position at {company}.
+
+We were impressed with your profile and would like to invite you for a video interview to discuss your experience and the role in more detail.
+
+Please let us know which of the following time slots would work best for you:
+- {proposed_slots[0]}
+- {proposed_slots[1]}
+- {proposed_slots[2]}
+
+The interview will be conducted via Zoom, and we will send you the meeting details once you confirm your preferred time slot.
+
+If you have any questions, please don't hesitate to contact us.
+
+We look forward to speaking with you soon!
+
+Best regards,
+Recruiting Team
+{company}
+            """
+            
+            return {
+                "candidate_name": candidate_info['name'],
+                "candidate_email": candidate_info['contact'],
+                "email_subject": f"Interview Invitation: {job_title} position at {company}",
+                "email_body": default_email,
+                "proposed_slots": proposed_slots[:5]
+            }
     except Exception as e:
         return {"error": f"Failed to generate email: {str(e)}"}
 
@@ -236,10 +408,13 @@ def send_interview_email(email_data):
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
+# Import regex for fallback parsing
+import re
+
 # Page configuration
 st.set_page_config(
     page_title="RecruitEase | Multi-Agent Recruiting System",
-    page_icon="",
+    page_icon="👥",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -460,7 +635,7 @@ with st.sidebar:
     st.markdown("## RecruitEase")
     
     # Navigation
-    st.markdown("###  Navigation")
+    st.markdown("### 🧭 Navigation")
     
     # Highlight current step
     step1_class = "step-complete" if st.session_state['current_step'] > 1 else "step-active" if st.session_state['current_step'] == 1 else "step-waiting"
@@ -474,7 +649,7 @@ with st.sidebar:
     st.markdown(f"<div class='{step4_class}' style='padding:10px; margin-bottom:10px; border-radius:5px;'>Step 4: Interview Scheduling</div>", unsafe_allow_html=True)
     
     # Reset button
-    if st.button(" Start New Process"):
+    if st.button("🔄 Start New Process"):
         # Reset session state
         st.session_state['current_step'] = 1
         st.session_state['jd_text'] = ""
@@ -486,11 +661,11 @@ with st.sidebar:
         st.experimental_rerun()
     
     # Settings
-    st.markdown("###  Settings")
+    st.markdown("### ⚙️ Settings")
     st.session_state['debug_mode'] = st.checkbox("Enable Debug Mode", st.session_state['debug_mode'])
     
     # About
-    st.markdown("###  About RecruitEase")
+    st.markdown("### ℹ️ About RecruitEase")
     st.markdown("""
     RecruitEase is a multi-agent AI system that automates the recruitment process from job description analysis to interview scheduling.
     """)
@@ -499,7 +674,7 @@ with st.sidebar:
     st.markdown("<div class='footer'>© 2025 RecruitEase | v1.0</div>", unsafe_allow_html=True)
 
 # Main content
-st.markdown("<h1 class='main-header'> RecruitEase: Multi-Agent Recruiting System</h1>", unsafe_allow_html=True)
+st.markdown("<h1 class='main-header'>👥 RecruitEase: Multi-Agent Recruiting System</h1>", unsafe_allow_html=True)
 
 # Step 1: Job Description Analysis
 if st.session_state['current_step'] == 1:
@@ -513,14 +688,14 @@ if st.session_state['current_step'] == 1:
     st.markdown("</div>", unsafe_allow_html=True)
     
     st.markdown("<div class='card'>", unsafe_allow_html=True)
-    st.markdown("<p class='section-header'> Job Description</p>", unsafe_allow_html=True)
+    st.markdown("<p class='section-header'>📄 Job Description</p>", unsafe_allow_html=True)
     jd_text = st.text_area("Paste the job description here", st.session_state['jd_text'], height=250, 
                           placeholder="Paste the complete job description here...")
     st.session_state['jd_text'] = jd_text
     
-    if st.button(" Analyze Job Description"):
+    if st.button("🔍 Analyze Job Description"):
         if jd_text.strip():
-            with st.spinner(" Analyzing job description..."):
+            with st.spinner("⏳ Analyzing job description..."):
                 jd_summary = summarize_job_description(jd_text)
                 st.session_state['jd_summary'] = jd_summary
                 
@@ -540,7 +715,7 @@ elif st.session_state['current_step'] == 2:
     
     # Display JD Summary
     st.markdown("<div class='card'>", unsafe_allow_html=True)
-    st.markdown("<p class='section-header'> Job Description Summary</p>", unsafe_allow_html=True)
+    st.markdown("<p class='section-header'>📋 Job Description Summary</p>", unsafe_allow_html=True)
     
     jd_summary = st.session_state['jd_summary']
     col1, col2 = st.columns(2)
@@ -555,17 +730,17 @@ elif st.session_state['current_step'] == 2:
     with col2:
         st.markdown("*Required Skills:*")
         for skill in jd_summary.get('RequiredSkills', []):
-            st.markdown(f"<span class='keyword-pill'> {skill}</span>", unsafe_allow_html=True)
+            st.markdown(f"<span class='keyword-pill'>🔍 {skill}</span>", unsafe_allow_html=True)
             
         st.markdown("*Preferred Skills:*")
         for skill in jd_summary.get('PreferredSkills', []):
-            st.markdown(f"<span class='keyword-pill'> {skill}</span>", unsafe_allow_html=True)
+            st.markdown(f"<span class='keyword-pill'>✨ {skill}</span>", unsafe_allow_html=True)
     
     st.markdown("</div>", unsafe_allow_html=True)
     
     # CV Upload
     st.markdown("<div class='card'>", unsafe_allow_html=True)
-    st.markdown("<p class='section-header'> Upload Resumes</p>", unsafe_allow_html=True)
+    st.markdown("<p class='section-header'>📎 Upload Resumes</p>", unsafe_allow_html=True)
     
     uploaded_files = st.file_uploader("Upload candidate resumes (PDF format)", type="pdf", accept_multiple_files=True)
     
@@ -589,12 +764,12 @@ elif st.session_state['current_step'] == 2:
         # Display uploaded files
         st.markdown("### Uploaded Resumes")
         for i, resume in enumerate(st.session_state['resumes']):
-            status = " Analyzed" if resume['analyzed'] else " Pending Analysis"
+            status = "✅ Analyzed" if resume['analyzed'] else "⏳ Pending Analysis"
             st.markdown(f"{i+1}. {resume['name']} - {status}")
     
     if st.session_state['resumes']:
-        if st.button(" Analyze All Resumes"):
-            with st.spinner(" Analyzing resumes against job requirements..."):
+        if st.button("📊 Analyze All Resumes"):
+            with st.spinner("⏳ Analyzing resumes against job requirements..."):
                 # Reset candidates analysis
                 st.session_state['candidates_analysis'] = []
                 
@@ -624,7 +799,7 @@ elif st.session_state['current_step'] == 2:
     st.markdown("</div>", unsafe_allow_html=True)
     
     # Back button
-    if st.button(" Back to Job Description"):
+    if st.button("⬅️ Back to Job Description"):
         st.session_state['current_step'] = 1
         st.experimental_rerun()
 
@@ -633,14 +808,14 @@ elif st.session_state['current_step'] == 3:
     st.markdown("<h2>Step 3: Candidate Shortlisting</h2>", unsafe_allow_html=True)
     
     st.markdown("<div class='card'>", unsafe_allow_html=True)
-    st.markdown("<p class='section-header'> Set Shortlisting Criteria</p>", unsafe_allow_html=True)
+    st.markdown("<p class='section-header'>🎯 Set Shortlisting Criteria</p>", unsafe_allow_html=True)
     
     # Shortlisting threshold slider
     threshold = st.slider("Minimum Match Percentage for Shortlisting", min_value=50, max_value=95, value=70, step=5)
     
     # Candidates analysis results
     st.markdown("<div class='card'>", unsafe_allow_html=True)
-    st.markdown("<p class='section-header'> Candidate Analysis Results</p>", unsafe_allow_html=True)
+    st.markdown("<p class='section-header'>📊 Candidate Analysis Results</p>", unsafe_allow_html=True)
     
     if st.session_state['candidates_analysis']:
         for i, candidate in enumerate(st.session_state['candidates_analysis']):
@@ -649,7 +824,7 @@ elif st.session_state['current_step'] == 3:
                 continue
                 
             # Create an expandable section for each candidate
-            with st.expander(f" {candidate.get('CandidateName', f'Candidate {i+1}')} - Match: {candidate.get('OverallMatch', '0%')}"):
+            with st.expander(f"📄 {candidate.get('CandidateName', f'Candidate {i+1}')} - Match: {candidate.get('OverallMatch', '0%')}"):
                 col1, col2 = st.columns([1, 1])
                 
                 with col1:
@@ -699,8 +874,8 @@ elif st.session_state['current_step'] == 3:
     st.markdown("</div>", unsafe_allow_html=True)
     
     # Shortlist button
-    if st.button(" Shortlist Candidates"):
-        with st.spinner(" Shortlisting candidates..."):
+    if st.button("👍 Shortlist Candidates"):
+        with st.spinner("⏳ Shortlisting candidates..."):
             shortlisted = shortlist_candidates(st.session_state['candidates_analysis'], threshold)
             st.session_state['shortlisted_candidates'] = shortlisted
             
@@ -712,7 +887,7 @@ elif st.session_state['current_step'] == 3:
                 st.warning("No candidates met the threshold criteria. Consider lowering the threshold.")
     
     # Back button
-    if st.button(" Back to Resume Upload"):
+    if st.button("⬅️ Back to Resume Upload"):
         st.session_state['current_step'] = 2
         st.experimental_rerun()
     st.markdown("</div>", unsafe_allow_html=True)
@@ -722,7 +897,7 @@ elif st.session_state['current_step'] == 4:
     st.markdown("<h2>Step 4: Interview Scheduling</h2>", unsafe_allow_html=True)
     
     st.markdown("<div class='card'>", unsafe_allow_html=True)
-    st.markdown("<p class='section-header'> Shortlisted Candidates</p>", unsafe_allow_html=True)
+    st.markdown("<p class='section-header'>👥 Shortlisted Candidates</p>", unsafe_allow_html=True)
     
     if st.session_state['shortlisted_candidates']:
         for i, candidate in enumerate(st.session_state['shortlisted_candidates']):
@@ -739,7 +914,7 @@ elif st.session_state['current_step'] == 4:
                 st.markdown(f"Key strengths: {strengths_text}")
             
             with col2:
-                email_status = " Sent" if candidate['name'] in st.session_state['interview_emails'] else " Draft Email"
+                email_status = "📨 Sent" if candidate['name'] in st.session_state['interview_emails'] else "📝 Draft Email"
                 st.markdown(f"<div style='padding:5px;border-radius:5px;background-color:{'#c8e6c9' if candidate['name'] in st.session_state['interview_emails'] else '#e0e0e0'};text-align:center;'>{email_status}</div>", unsafe_allow_html=True)
                 
             with col3:
@@ -747,7 +922,7 @@ elif st.session_state['current_step'] == 4:
                 button_label = "View Email" if candidate['name'] in st.session_state['interview_emails'] else "Create Email"
                 if st.button(button_label, key=f"email_btn_{i}"):
                     if candidate['name'] not in st.session_state['interview_emails']:
-                        with st.spinner(f" Generating email for {candidate['name']}..."):
+                        with st.spinner(f"⏳ Generating email for {candidate['name']}..."):
                             email_data = generate_interview_email(candidate, st.session_state['jd_summary'])
                             if "error" not in email_data:
                                 st.session_state['interview_emails'][candidate['name']] = email_data
@@ -759,7 +934,7 @@ elif st.session_state['current_step'] == 4:
             
             # If this candidate has an email generated, show it when expanded
             if candidate['name'] in st.session_state['interview_emails']:
-                with st.expander(" View Email Draft"):
+                with st.expander("📧 View Email Draft"):
                     email_data = st.session_state['interview_emails'][candidate['name']]
                     st.markdown(f"*Subject:* {email_data['email_subject']}")
                     st.markdown("<div class='email-preview'>", unsafe_allow_html=True)
@@ -767,8 +942,8 @@ elif st.session_state['current_step'] == 4:
                     st.markdown("</div>", unsafe_allow_html=True)
                     
                     # Send individual email
-                    if st.button(" Send Email", key=f"send_btn_{i}"):
-                        with st.spinner(" Sending email..."):
+                    if st.button("✉️ Send Email", key=f"send_btn_{i}"):
+                        with st.spinner("⏳ Sending email..."):
                             result = send_interview_email(email_data)
                             if result["status"] == "success":
                                 st.success(result["message"])
@@ -783,8 +958,8 @@ elif st.session_state['current_step'] == 4:
         st.markdown("<div class='card'>", unsafe_allow_html=True)
         col1, col2, col3 = st.columns([1, 2, 1])
         with col2:
-            if st.button(" Send All Interview Emails", use_container_width=True):
-                with st.spinner(" Sending all emails..."):
+            if st.button("📨 Send All Interview Emails", use_container_width=True):
+                with st.spinner("⏳ Sending all emails..."):
                     success_count = 0
                     for candidate_name, email_data in st.session_state['interview_emails'].items():
                         result = send_interview_email(email_data)
@@ -798,22 +973,22 @@ elif st.session_state['current_step'] == 4:
         st.markdown("</div>", unsafe_allow_html=True)
     
     # Back button
-    if st.button(" Back to Shortlisting"):
+    if st.button("⬅️ Back to Shortlisting"):
         st.session_state['current_step'] = 3
         st.experimental_rerun()
 
 # Process completion
 if st.session_state['current_step'] > 4:
-    st.markdown("<h2> Recruitment Process Complete!</h2>", unsafe_allow_html=True)
+    st.markdown("<h2>🎉 Recruitment Process Complete!</h2>", unsafe_allow_html=True)
     
     st.markdown("<div class='card'>", unsafe_allow_html=True)
     st.markdown("""
     Congratulations! You have successfully completed the automated recruitment process:
     
-    1.  *Job Description Analysis*: Extracted key requirements and skills
-    2.  *CV Processing*: Analyzed candidate qualifications against job requirements
-    3.  *Candidate Shortlisting*: Identified the best candidates based on match scores
-    4.  *Interview Scheduling*: Sent interview invitations to qualified candidates
+    1. ✅ *Job Description Analysis*: Extracted key requirements and skills
+    2. ✅ *CV Processing*: Analyzed candidate qualifications against job requirements
+    3. ✅ *Candidate Shortlisting*: Identified the best candidates based on match scores
+    4. ✅ *Interview Scheduling*: Sent interview invitations to qualified candidates
     
     To start a new recruitment process, click the "Start New Process" button in the sidebar.
     """)
