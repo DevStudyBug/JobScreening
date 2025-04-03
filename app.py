@@ -697,29 +697,586 @@ with tabs[1]:
                 st.json(jd_summary)
                 st.markdown("</div>", unsafe_allow_html=True)
 
-# Tab 3: Candidate Management
+# Tab 3: Candidate Management (Continued)
 with tabs[2]:
-    st.markdown("<h2>👥 Candidate Management</h2>", unsafe_allow_html=True)
+    # Candidate upload section
+    st.markdown("<div class='card'>", unsafe_allow_html=True)
+    st.markdown("<p class='section-header'>📄 Upload Candidate Resume</p>", unsafe_allow_html=True)
+    
+    uploaded_file = st.file_uploader("Upload a resume (PDF, DOCX)", type=["pdf", "docx"], key="resume_uploader")
+    candidate_name = st.text_input("Candidate Name", key="candidate_name")
+    candidate_email = st.text_input("Candidate Email", key="candidate_email")
+    
+    # Job description selection for comparison
+    st.markdown("<p class='section-header'>🔍 Select Job Description for Comparison</p>", unsafe_allow_html=True)
+    
+    # Use the previously analyzed JD if available, or let user select from saved JDs
+    use_current_jd = False
+    if 'jd_summary' in st.session_state and st.session_state['jd_summary']:
+        use_current_jd = st.checkbox("Use currently analyzed job description", value=True)
+    
+    if use_current_jd and 'jd_summary' in st.session_state:
+        selected_jd = st.session_state['jd_summary']
+        st.info(f"Using current JD: {selected_jd.get('JobTitle', 'Unnamed Position')}")
+    else:
+        # Demo mode - would normally load from database
+        saved_jds = {
+            "Select a job": None,
+            "Data Scientist": {"JobTitle": "Data Scientist", "RequiredSkills": ["Python", "Machine Learning", "SQL", "Data Visualization"]},
+            "Software Engineer": {"JobTitle": "Software Engineer", "RequiredSkills": ["Java", "JavaScript", "Cloud Services", "Git"]}
+        }
+        selected_jd_name = st.selectbox("Select a saved job description", list(saved_jds.keys()))
+        selected_jd = saved_jds[selected_jd_name]
+    
+    analyze_button = st.button("🔍 Analyze Candidate")
+    st.markdown("</div>", unsafe_allow_html=True)
+    
+    # Process resume and display results
+    if analyze_button and uploaded_file and selected_jd:
+        with st.spinner("⏳ Analyzing resume and comparing to job description..."):
+            # Extract resume data
+            resume_data = extract_resume_data(uploaded_file)
+            
+            # Calculate match score
+            match_score, skill_matches, missing_skills = compare_resume_to_jd(resume_data, selected_jd)
+            
+            # Store in session state
+            if 'candidates' not in st.session_state:
+                st.session_state['candidates'] = []
+                
+            # Add to candidates list
+            candidate_info = {
+                "name": candidate_name,
+                "email": candidate_email,
+                "resume_data": resume_data,
+                "match_score": match_score,
+                "skill_matches": skill_matches,
+                "missing_skills": missing_skills,
+                "jd_title": selected_jd.get('JobTitle', 'Unnamed Position'),
+                "shortlisted": match_score >= 80  # Auto-shortlist if score is 80% or higher
+            }
+            
+            st.session_state['candidates'].append(candidate_info)
+            st.session_state['current_candidate'] = candidate_info
+            
+        # Display resume analysis
+        st.markdown("<h3>📋 Resume Analysis</h3>", unsafe_allow_html=True)
+        
+        # Candidate profile
+        st.markdown("<div class='card'>", unsafe_allow_html=True)
+        st.markdown(f"<h3>{candidate_name}</h3>", unsafe_allow_html=True)
+        st.markdown(f"<p><strong>Email:</strong> {candidate_email}</p>", unsafe_allow_html=True)
+        
+        # Display match score with color coding
+        score_color = "green" if match_score >= 80 else "orange" if match_score >= 60 else "red"
+        st.markdown(f"<p><strong>Match Score:</strong> <span style='color:{score_color};font-weight:bold;'>{match_score}%</span></p>", unsafe_allow_html=True)
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.markdown("<p class='section-header'>✅ Matching Skills</p>", unsafe_allow_html=True)
+            if skill_matches:
+                for skill in skill_matches:
+                    st.markdown(f"• {skill}")
+            else:
+                st.info("No matching skills found.")
+                
+        with col2:
+            st.markdown("<p class='section-header'>❌ Missing Skills</p>", unsafe_allow_html=True)
+            if missing_skills:
+                for skill in missing_skills:
+                    st.markdown(f"• {skill}")
+            else:
+                st.success("No missing key skills.")
+        
+        # Candidate summary
+        st.markdown("<p class='section-header'>📝 Candidate Summary</p>", unsafe_allow_html=True)
+        st.markdown(resume_data.get('summary', 'No summary available.'))
+        st.markdown("</div>", unsafe_allow_html=True)
+        
+        # Resume details
+        exp_col, edu_col = st.columns(2)
+        
+        with exp_col:
+            st.markdown("<div class='card'>", unsafe_allow_html=True)
+            st.markdown("<p class='section-header'>💼 Experience</p>", unsafe_allow_html=True)
+            if resume_data.get('experience'):
+                for exp in resume_data.get('experience', []):
+                    st.markdown(f"**{exp.get('title')}** at {exp.get('company')}")
+                    st.markdown(f"{exp.get('date')}")
+                    st.markdown(f"{exp.get('description')}")
+                    st.markdown("---")
+            else:
+                st.info("No experience data extracted.")
+            st.markdown("</div>", unsafe_allow_html=True)
+            
+        with edu_col:
+            st.markdown("<div class='card'>", unsafe_allow_html=True)
+            st.markdown("<p class='section-header'>🎓 Education</p>", unsafe_allow_html=True)
+            if resume_data.get('education'):
+                for edu in resume_data.get('education', []):
+                    st.markdown(f"**{edu.get('degree')}** from {edu.get('institution')}")
+                    st.markdown(f"{edu.get('date')}")
+                    st.markdown("---")
+            else:
+                st.info("No education data extracted.")
+            st.markdown("</div>", unsafe_allow_html=True)
+            
+        # Skills section
+        st.markdown("<div class='card'>", unsafe_allow_html=True)
+        st.markdown("<p class='section-header'>🔧 Skills</p>", unsafe_allow_html=True)
+        if resume_data.get('skills'):
+            skills_list = resume_data.get('skills', [])
+            # Display skills in multiple columns
+            cols = st.columns(3)
+            for i, skill in enumerate(skills_list):
+                cols[i % 3].markdown(f"• {skill}")
+        else:
+            st.info("No skills data extracted.")
+        st.markdown("</div>", unsafe_allow_html=True)
+
+# Tab 4: Shortlisting
+with tabs[3]:
+    st.markdown("<h2>🏆 Candidate Shortlisting</h2>", unsafe_allow_html=True)
     
     st.markdown("<div class='card'>", unsafe_allow_html=True)
     st.markdown("""
-    This section helps you manage candidate information and shortlisting based on resume analysis.
-    View all analyzed candidates, filter by match score, and manage the recruitment pipeline.
+    This section shows all analyzed candidates and helps you shortlist them based on their match score.
+    You can review candidates, adjust shortlisting status, and proceed to scheduling interviews.
     """)
     st.markdown("</div>", unsafe_allow_html=True)
     
-    # Candidate list view
+    # Candidates table
     st.markdown("<div class='card'>", unsafe_allow_html=True)
-    st.markdown("<p class='section-header'>👥 Candidate Database</p>", unsafe_allow_html=True)
+    st.markdown("<p class='section-header'>👥 Candidate Pool</p>", unsafe_allow_html=True)
     
-    # Filter options
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        filter_option = st.selectbox("Filter by status", ["All", "Shortlisted", "Not qualified", "Scheduled"])
-    with col2:
-        sort_option = st.selectbox("Sort by", ["Match percentage (high to low)", "Match percentage (low to high)", "Name (A-Z)", "Date added (newest first)"])
-    with col3:
-        search_term = st.text_input("Search by name or position", "")
+    if 'candidates' in st.session_state and st.session_state['candidates']:
+        candidates_df = pd.DataFrame([
+            {
+                "Name": c["name"],
+                "Email": c["email"],
+                "Job Position": c["jd_title"],
+                "Match Score": f"{c['match_score']}%",
+                "Status": "Shortlisted" if c["shortlisted"] else "Not Shortlisted",
+                "Index": i
+            } for i, c in enumerate(st.session_state['candidates'])
+        ])
+        
+        # Color coding based on match score
+        def highlight_score(val):
+            score = int(val.replace('%', ''))
+            if score >= 80:
+                return 'background-color: #c8e6c9; color: #2e7d32'
+            elif score >= 60:
+                return 'background-color: #fff9c4; color: #f57f17'
+            else:
+                return 'background-color: #ffcdd2; color: #c62828'
+        
+        # Apply styling
+        styled_df = candidates_df.style.applymap(
+            highlight_score, subset=['Match Score']
+        )
+        
+        # Display table
+        st.dataframe(styled_df, hide_index=True)
+        
+        # Candidate selection and actions
+        st.markdown("<p class='section-header'>🔍 Candidate Actions</p>", unsafe_allow_html=True)
+        
+        selected_candidate_idx = st.selectbox(
+            "Select candidate to review or modify",
+            options=range(len(st.session_state['candidates'])),
+            format_func=lambda x: f"{st.session_state['candidates'][x]['name']} ({st.session_state['candidates'][x]['jd_title']})"
+        )
+        
+        if selected_candidate_idx is not None:
+            candidate = st.session_state['candidates'][selected_candidate_idx]
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                current_status = candidate["shortlisted"]
+                new_status = st.checkbox("Shortlist this candidate", value=current_status)
+                
+                if new_status != current_status:
+                    st.session_state['candidates'][selected_candidate_idx]["shortlisted"] = new_status
+                    st.success(f"Candidate {candidate['name']} {'shortlisted' if new_status else 'removed from shortlist'}")
+            
+            with col2:
+                view_details = st.button("View Detailed Profile")
+                
+            if view_details:
+                # Display detailed profile
+                st.markdown("<h3>📋 Candidate Profile</h3>", unsafe_allow_html=True)
+                
+                # Profile card
+                st.markdown("<div class='card'>", unsafe_allow_html=True)
+                st.markdown(f"<h3>{candidate['name']}</h3>", unsafe_allow_html=True)
+                st.markdown(f"<p><strong>Email:</strong> {candidate['email']}</p>", unsafe_allow_html=True)
+                st.markdown(f"<p><strong>Match Score:</strong> {candidate['match_score']}%</p>", unsafe_allow_html=True)
+                st.markdown(f"<p><strong>Status:</strong> {'Shortlisted' if candidate['shortlisted'] else 'Not Shortlisted'}</p>", unsafe_allow_html=True)
+                
+                # Show resume details similar to the analysis tab
+                resume_data = candidate['resume_data']
+                st.markdown("<p class='section-header'>📝 Summary</p>", unsafe_allow_html=True)
+                st.markdown(resume_data.get('summary', 'No summary available.'))
+                st.markdown("</div>", unsafe_allow_html=True)
+                
+                # Experience and education
+                exp_col, edu_col = st.columns(2)
+                
+                with exp_col:
+                    st.markdown("<div class='card'>", unsafe_allow_html=True)
+                    st.markdown("<p class='section-header'>💼 Experience</p>", unsafe_allow_html=True)
+                    if resume_data.get('experience'):
+                        for exp in resume_data.get('experience', []):
+                            st.markdown(f"**{exp.get('title')}** at {exp.get('company')}")
+                            st.markdown(f"{exp.get('date')}")
+                            st.markdown(f"{exp.get('description')}")
+                            st.markdown("---")
+                    else:
+                        st.info("No experience data extracted.")
+                    st.markdown("</div>", unsafe_allow_html=True)
+                    
+                with edu_col:
+                    st.markdown("<div class='card'>", unsafe_allow_html=True)
+                    st.markdown("<p class='section-header'>🎓 Education</p>", unsafe_allow_html=True)
+                    if resume_data.get('education'):
+                        for edu in resume_data.get('education', []):
+                            st.markdown(f"**{edu.get('degree')}** from {edu.get('institution')}")
+                            st.markdown(f"{edu.get('date')}")
+                            st.markdown("---")
+                    else:
+                        st.info("No education data extracted.")
+                    st.markdown("</div>", unsafe_allow_html=True)
+    else:
+        st.info("No candidates have been analyzed yet. Please upload and analyze resumes in the Candidate Management tab.")
     
-    # Apply filters and sorting
-    filtered_candidates = st.session_state['candidates']
+    # Shortlisting overview
+    if 'candidates' in st.session_state and st.session_state['candidates']:
+        st.markdown("<div class='card'>", unsafe_allow_html=True)
+        st.markdown("<p class='section-header'>🏆 Shortlisting Overview</p>", unsafe_allow_html=True)
+        
+        # Count shortlisted candidates per job
+        jobs = {}
+        for c in st.session_state['candidates']:
+            job = c['jd_title']
+            if job not in jobs:
+                jobs[job] = {'total': 0, 'shortlisted': 0}
+            
+            jobs[job]['total'] += 1
+            if c['shortlisted']:
+                jobs[job]['shortlisted'] += 1
+        
+        # Display overview
+        for job, counts in jobs.items():
+            st.markdown(f"**{job}:** {counts['shortlisted']} shortlisted out of {counts['total']} candidates")
+        
+        st.markdown("</div>", unsafe_allow_html=True)
+    
+    st.markdown("</div>", unsafe_allow_html=True)
+
+# Tab 5: Interview Scheduler
+with tabs[4]:
+    st.markdown("<h2>📅 Interview Scheduler</h2>", unsafe_allow_html=True)
+    
+    st.markdown("<div class='card'>", unsafe_allow_html=True)
+    st.markdown("""
+    Schedule interviews with shortlisted candidates. Configure interview details and generate 
+    personalized invitation emails.
+    """)
+    st.markdown("</div>", unsafe_allow_html=True)
+    
+    # Shortlisted candidates for interviews
+    st.markdown("<div class='card'>", unsafe_allow_html=True)
+    st.markdown("<p class='section-header'>👥 Shortlisted Candidates</p>", unsafe_allow_html=True)
+    
+    if 'candidates' in st.session_state and any(c["shortlisted"] for c in st.session_state['candidates']):
+        shortlisted = [c for c in st.session_state['candidates'] if c["shortlisted"]]
+        
+        # Display shortlisted candidates
+        shortlisted_df = pd.DataFrame([
+            {
+                "Name": c["name"],
+                "Email": c["email"],
+                "Job Position": c["jd_title"],
+                "Match Score": f"{c['match_score']}%",
+                "Index": i
+            } for i, c in enumerate(shortlisted)
+        ])
+        
+        st.dataframe(shortlisted_df, hide_index=True)
+        
+        # Select candidate for scheduling
+        selected_candidate_idx = st.selectbox(
+            "Select candidate to schedule interview",
+            options=range(len(shortlisted)),
+            format_func=lambda x: f"{shortlisted[x]['name']} ({shortlisted[x]['jd_title']})"
+        )
+        
+        if selected_candidate_idx is not None:
+            candidate = shortlisted[selected_candidate_idx]
+            
+            # Interview details form
+            st.markdown("<div class='card'>", unsafe_allow_html=True)
+            st.markdown("<p class='section-header'>📝 Interview Details</p>", unsafe_allow_html=True)
+            
+            # Interview type and format
+            interview_type = st.selectbox(
+                "Interview Type",
+                options=["Initial Screening", "Technical Interview", "Team Interview", "Final Interview"]
+            )
+            
+            interview_format = st.selectbox(
+                "Interview Format",
+                options=["Video Call", "Phone Call", "In-Person", "Technical Assessment"]
+            )
+            
+            # Date and time options
+            col1, col2 = st.columns(2)
+            with col1:
+                interview_date = st.date_input("Interview Date", value=datetime.now() + timedelta(days=3))
+            
+            with col2:
+                interview_time = st.time_input("Interview Time", value=datetime.strptime("14:00", "%H:%M").time())
+            
+            # Alternate date/time
+            st.markdown("<p>Alternative Date/Time (Optional)</p>", unsafe_allow_html=True)
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                alt_date = st.date_input("Alternative Date", value=datetime.now() + timedelta(days=4))
+            
+            with col2:
+                alt_time = st.time_input("Alternative Time", value=datetime.strptime("10:00", "%H:%M").time())
+            
+            # Interviewers
+            interviewers = st.text_input("Interviewers (comma separated names)")
+            
+            # Location or meeting link
+            if interview_format == "In-Person":
+                location = st.text_input("Interview Location")
+            else:
+                location = st.text_input("Meeting Link or Phone Number")
+            
+            # Additional notes
+            notes = st.text_area("Additional Notes for Candidate", placeholder="Any special instructions or preparation details...")
+            
+            # Generate email preview
+            if st.button("Generate Email"):
+                # Create email template
+                email_content = generate_interview_email(
+                    candidate_name=candidate['name'],
+                    job_title=candidate['jd_title'],
+                    interview_type=interview_type,
+                    interview_format=interview_format,
+                    interview_date=interview_date,
+                    interview_time=interview_time,
+                    alt_date=alt_date,
+                    alt_time=alt_time,
+                    location=location,
+                    interviewers=interviewers,
+                    notes=notes
+                )
+                
+                st.session_state['email_preview'] = email_content
+            
+            st.markdown("</div>", unsafe_allow_html=True)
+            
+            # Email preview
+            if 'email_preview' in st.session_state:
+                st.markdown("<div class='card'>", unsafe_allow_html=True)
+                st.markdown("<p class='section-header'>📧 Email Preview</p>", unsafe_allow_html=True)
+                
+                st.text_area("Email Content", value=st.session_state['email_preview'], height=300)
+                
+                col1, col2 = st.columns(2)
+                with col1:
+                    if st.button("Send Email"):
+                        # In a real application, this would send the email
+                        st.success(f"Interview invitation sent to {candidate['name']} at {candidate['email']}")
+                with col2:
+                    st.download_button(
+                        "Download Email",
+                        data=st.session_state['email_preview'],
+                        file_name="interview_invitation.txt",
+                        mime="text/plain"
+                    )
+                
+                st.markdown("</div>", unsafe_allow_html=True)
+    else:
+        st.info("No candidates have been shortlisted yet. Please shortlist candidates in the Shortlisting tab.")
+    
+    st.markdown("</div>", unsafe_allow_html=True)
+
+# Helper functions (for actual implementation)
+
+def extract_resume_data(uploaded_file):
+    """
+    Extract key information from a resume file
+    In a real implementation, this would use NLP to extract data
+    """
+    # This is a placeholder function - in a real implementation would use
+    # libraries like PyPDF2, python-docx, and NLP to extract resume data
+    
+    # For demo purposes, return mock data
+    return {
+        "summary": "Experienced software engineer with 5+ years in full-stack development and ML engineering. Strong skills in Python, React, and cloud technologies.",
+        "experience": [
+            {
+                "title": "Senior Software Engineer",
+                "company": "Tech Solutions Inc.",
+                "date": "2020 - Present",
+                "description": "Led development of ML-powered recommendation systems. Improved system efficiency by 40%."
+            },
+            {
+                "title": "Software Developer",
+                "company": "DataCorp",
+                "date": "2018 - 2020",
+                "description": "Developed RESTful APIs and microservices. Worked with Python, Docker, and AWS."
+            }
+        ],
+        "education": [
+            {
+                "degree": "MS in Computer Science",
+                "institution": "University of Technology",
+                "date": "2016 - 2018"
+            },
+            {
+                "degree": "BS in Software Engineering",
+                "institution": "Tech Institute",
+                "date": "2012 - 2016"
+            }
+        ],
+        "skills": [
+            "Python", "JavaScript", "React", "Node.js", "Docker", 
+            "Kubernetes", "Machine Learning", "SQL", "MongoDB",
+            "AWS", "CI/CD", "Git", "Agile", "TensorFlow"
+        ]
+    }
+
+def compare_resume_to_jd(resume_data, jd_data):
+    """
+    Compare resume data to job description and calculate match score
+    """
+    # This is a simplified implementation for demo purposes
+    # In a real application, would use NLP, word embeddings, etc.
+    
+    # Extract skills from resume
+    resume_skills = set([s.lower() for s in resume_data.get('skills', [])])
+    
+    # Extract required skills from JD
+    jd_skills = set([s.lower() for s in jd_data.get('RequiredSkills', [])])
+    
+    # Calculate skill matches
+    if jd_skills:
+        matching_skills = resume_skills.intersection(jd_skills)
+        missing_skills = jd_skills - resume_skills
+        
+        # Calculate match percentage
+        if len(jd_skills) > 0:
+            skill_match_percentage = (len(matching_skills) / len(jd_skills)) * 100
+        else:
+            skill_match_percentage = 100
+    else:
+        matching_skills = []
+        missing_skills = []
+        skill_match_percentage = 50  # Default if no skills are listed
+    
+    # In a real implementation, would also consider:
+    # - Experience level match
+    # - Education match
+    # - Location match
+    # - etc.
+    
+    # For demo purposes, just return the skill match
+    return round(skill_match_percentage), list(matching_skills), list(missing_skills)
+
+def summarize_job_description(jd_text):
+    """
+    Extract key information from a job description
+    In a real implementation, this would use NLP to extract data
+    """
+    # This is a placeholder function - in a real implementation would use
+    # an LLM or other NLP techniques to extract JD data
+    
+    # For demo purposes, return mock data
+    return {
+        "JobTitle": "Senior Data Scientist",
+        "CompanyOverview": "We are a leading tech company focused on AI solutions.",
+        "RequiredSkills": [
+            "Python", "Machine Learning", "SQL", "TensorFlow", "PyTorch",
+            "Data Visualization", "Statistical Analysis", "NLP"
+        ],
+        "RequiredExperience": "5+ years",
+        "RequiredQualifications": [
+            "Master's degree in Computer Science, Statistics, or related field",
+            "Experience with deep learning frameworks",
+            "Strong communication skills"
+        ],
+        "JobResponsibilities": [
+            "Develop and implement ML models",
+            "Analyze large datasets to extract insights",
+            "Collaborate with cross-functional teams",
+            "Present findings to stakeholders",
+            "Research and implement new ML techniques"
+        ],
+        "KeywordsSummary": "This role requires strong skills in machine learning, Python, and data analysis. The ideal candidate will have experience with deep learning frameworks and a strong educational background in a related field."
+    }
+
+def generate_interview_email(candidate_name, job_title, interview_type, interview_format, 
+                            interview_date, interview_time, alt_date, alt_time, 
+                            location, interviewers, notes):
+    """Generate personalized interview invitation email"""
+    
+    # Format dates and times
+    date_str = interview_date.strftime("%A, %B %d, %Y")
+    time_str = interview_time.strftime("%I:%M %p")
+    
+    alt_date_str = alt_date.strftime("%A, %B %d, %Y")
+    alt_time_str = alt_time.strftime("%I:%M %p")
+    
+    # Format interviewers
+    if interviewers:
+        interviewers_list = [name.strip() for name in interviewers.split(",")]
+        if len(interviewers_list) == 1:
+            interviewers_str = interviewers
+        elif len(interviewers_list) == 2:
+            interviewers_str = f"{interviewers_list[0]} and {interviewers_list[1]}"
+        else:
+            interviewers_str = ", ".join(interviewers_list[:-1]) + f", and {interviewers_list[-1]}"
+    else:
+        interviewers_str = "our team"
+    
+    # Create email template
+    email = f"""Subject: Interview Invitation: {job_title} Position at [Company Name]
+
+Dear {candidate_name},
+
+We are pleased to inform you that your application for the {job_title} position has been shortlisted. We would like to invite you for a {interview_type.lower()} interview to further discuss your qualifications and experience.
+
+Interview Details:
+- Position: {job_title}
+- Interview Type: {interview_type}
+- Format: {interview_format}
+- Date: {date_str}
+- Time: {time_str}
+- {"Location: " + location if location else ""}
+
+{f"Alternative Slot (if the above time doesn't work for you):\\n- Date: {alt_date_str}\\n- Time: {alt_time_str}\\n" if alt_date and alt_time else ""}
+
+You will be interviewed by {interviewers_str}.
+
+{f"Additional Information:\\n{notes}" if notes else ""}
+
+Please confirm your availability for this interview by replying to this email. If the proposed time doesn't work for you, please let us know your preference from the alternative options provided.
+
+We look forward to speaking with you and learning more about your experience and skills.
+
+Best regards,
+[Your Name]
+Recruitment Team
+[Company Name]
+[Contact Information]
+"""
+    
+    return email
