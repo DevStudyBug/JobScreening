@@ -377,36 +377,77 @@ Recruiting Team
     except Exception as e:
         return {"error": f"Failed to generate email: {str(e)}"}
 
-# Function to send emails (for demonstration purposes)
+# Function to send emails
 def send_interview_email(email_data):
     try:
-        # For demonstration, just return success
-        return {
-            "status": "success",
-            "message": f"Email would be sent to {email_data['candidate_email']}"
-        }
-        
-        # Actual implementation would use SMTP
-        """
         sender_email = os.getenv("EMAIL_ADDRESS")
         password = os.getenv("EMAIL_PASSWORD")
         
+        if not sender_email or not password:
+            return {
+                "status": "error", 
+                "message": "Email credentials not found. Please add EMAIL_ADDRESS and EMAIL_PASSWORD to your .env file."
+            }
+        
+        recipient_email = email_data['candidate_email']
+        
+        # For debugging - print credentials (remove in production)
+        if st.session_state.get('debug_mode', False):
+            st.write(f"Using email: {sender_email}")
+            st.write(f"Password length: {len(password)} characters")
+            st.write(f"Sending to: {recipient_email}")
+        
+        # Check if recipient email is valid
+        if not re.match(r"[^@]+@[^@]+\.[^@]+", recipient_email):
+            return {
+                "status": "error", 
+                "message": f"Invalid recipient email address: {recipient_email}"
+            }
+        
         msg = MIMEMultipart()
         msg['From'] = sender_email
-        msg['To'] = email_data['candidate_email']
+        msg['To'] = recipient_email
         msg['Subject'] = email_data['email_subject']
         
         msg.attach(MIMEText(email_data['email_body'], 'plain'))
         
-        with smtplib.SMTP('smtp.gmail.com', 587) as server:
-            server.starttls()
-            server.login(sender_email, password)
-            server.send_message(msg)
+        # Connect to Gmail's SMTP server with extended timeout and debug level
+        try:
+            with smtplib.SMTP('smtp.gmail.com', 587, timeout=30) as server:
+                if st.session_state.get('debug_mode', False):
+                    server.set_debuglevel(1)  # Enable verbose debug output
+                
+                # Identify ourselves to the SMTP server
+                server.ehlo()
+                
+                # Enable TLS encryption
+                server.starttls()
+                
+                # Re-identify ourselves over TLS connection
+                server.ehlo()
+                
+                # Login with credentials
+                server.login(sender_email, password)
+                
+                # Send the message
+                server.send_message(msg)
+                
+                return {
+                    "status": "success", 
+                    "message": f"Email sent to {recipient_email}"
+                }
+        except smtplib.SMTPServerDisconnected as e:
+            return {"status": "error", "message": f"Server disconnected: {str(e)}. Check your internet connection."}
+        except smtplib.SMTPAuthenticationError as e:
+            return {"status": "error", "message": f"Authentication failed: {str(e)}. Verify your email and App Password."}
+        except smtplib.SMTPException as e:
+            return {"status": "error", "message": f"SMTP error: {str(e)}"}
             
-        return {"status": "success", "message": f"Email sent to {email_data['candidate_email']}"}
-        """
     except Exception as e:
-        return {"status": "error", "message": str(e)}
+        return {
+            "status": "error", 
+            "message": f"Error sending email: {str(e)}"
+        }
 
 # Import regex for fallback parsing
 import re
@@ -628,6 +669,8 @@ if 'interview_emails' not in st.session_state:
     st.session_state['interview_emails'] = {}
 if 'debug_mode' not in st.session_state:
     st.session_state['debug_mode'] = False
+if 'emails_sent' not in st.session_state:
+    st.session_state['emails_sent'] = set()  # Keep track of sent emails
 
 # Sidebar content
 with st.sidebar:
@@ -942,11 +985,12 @@ elif st.session_state['current_step'] == 4:
                     st.markdown("</div>", unsafe_allow_html=True)
                     
                     # Send individual email
-                    if st.button("✉️ Send Email", key=f"send_btn_{i}"):
+                    if st.button("✉️ Send Email", key=f"send_btn_{i}") and candidate['name'] not in st.session_state['emails_sent']:
                         with st.spinner("⏳ Sending email..."):
                             result = send_interview_email(email_data)
                             if result["status"] == "success":
                                 st.success(result["message"])
+                                st.session_state['emails_sent'].add(candidate['name'])
                             else:
                                 st.error(f"Failed to send email: {result['message']}")
     else:
@@ -961,15 +1005,27 @@ elif st.session_state['current_step'] == 4:
             if st.button("📨 Send All Interview Emails", use_container_width=True):
                 with st.spinner("⏳ Sending all emails..."):
                     success_count = 0
+                    failed_emails = []
+                    
                     for candidate_name, email_data in st.session_state['interview_emails'].items():
+                        # Skip already sent emails
+                        if candidate_name in st.session_state['emails_sent']:
+                            success_count += 1
+                            continue
+                            
                         result = send_interview_email(email_data)
                         if result["status"] == "success":
                             success_count += 1
+                            st.session_state['emails_sent'].add(candidate_name)
+                        else:
+                            failed_emails.append((candidate_name, result["message"]))
                     
-                    if success_count == len(st.session_state['interview_emails']):
+                    if not failed_emails:
                         st.success(f"Successfully sent {success_count} interview emails!")
                     else:
                         st.warning(f"Sent {success_count} out of {len(st.session_state['interview_emails'])} emails.")
+                        for name, error in failed_emails:
+                            st.error(f"Failed to send email to {name}: {error}")
         st.markdown("</div>", unsafe_allow_html=True)
     
     # Back button
