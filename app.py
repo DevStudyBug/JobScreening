@@ -664,7 +664,7 @@ with st.sidebar:
     # About
     st.markdown("### ℹ️ About HirEase ")
     st.markdown("""
-    RecruitEase is a multi-agent AI system that automates the recruitment process from job description analysis to interview scheduling.
+    HirEase is a multi-agent AI system that automates the recruitment process from job description analysis to interview scheduling.
     """)
     
     # Footer
