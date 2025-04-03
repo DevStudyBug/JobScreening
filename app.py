@@ -628,7 +628,7 @@ if 'emails_sent' not in st.session_state:
 
 # Sidebar content
 with st.sidebar:
-    st.image("https://via.placeholder.com/80x80.png?text=RE", width=80)
+    # st.image("https://via.placeholder.com/80x80.png?text=RE", width=80)
     st.markdown("## HirEase")
     
     # Navigation
@@ -662,7 +662,7 @@ with st.sidebar:
     st.session_state['debug_mode'] = st.checkbox("Enable Debug Mode", st.session_state['debug_mode'])
     
     # About
-    st.markdown("### ℹ️ About ")
+    st.markdown("### ℹ️ About HirEase ")
     st.markdown("""
     RecruitEase is a multi-agent AI system that automates the recruitment process from job description analysis to interview scheduling.
     """)
