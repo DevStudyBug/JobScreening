@@ -668,7 +668,7 @@ with st.sidebar:
     """)
     
     # Footer
-    st.markdown("<div class='footer'>© 2025 RecruitEase | v1.0</div>", unsafe_allow_html=True)
+    st.markdown("<div class='footer'>© 2025 HirEase by Anshika dubey | v1.0</div>", unsafe_allow_html=True)
 
 # Main content
 st.markdown("<h1 class='main-header'>👥 HirEase: Automated Job Screening with AI & Data Intelligence</h1>", unsafe_allow_html=True)
@@ -1001,7 +1001,7 @@ elif st.session_state['current_step'] == 4:
         st.markdown("</div>", unsafe_allow_html=True)
     
     # Back button
-    if st.button("⬅️ Back to Shortlisting"):
+    if st.button("⬅️ Back to Shortlisted Candidates"):
         st.session_state['current_step'] = 3
         st.experimental_rerun()
 
