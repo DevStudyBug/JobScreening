@@ -629,7 +629,7 @@ if 'emails_sent' not in st.session_state:
 # Sidebar content
 with st.sidebar:
     st.image("https://via.placeholder.com/80x80.png?text=RE", width=80)
-    st.markdown("## RecruitEase")
+    st.markdown("## HirEase")
     
     # Navigation
     st.markdown("### 🧭 Navigation")
