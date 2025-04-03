@@ -662,7 +662,7 @@ with st.sidebar:
     st.session_state['debug_mode'] = st.checkbox("Enable Debug Mode", st.session_state['debug_mode'])
     
     # About
-    st.markdown("### ℹ️ About RecruitEase")
+    st.markdown("### ℹ️ About ")
     st.markdown("""
     RecruitEase is a multi-agent AI system that automates the recruitment process from job description analysis to interview scheduling.
     """)
@@ -671,7 +671,7 @@ with st.sidebar:
     st.markdown("<div class='footer'>© 2025 RecruitEase | v1.0</div>", unsafe_allow_html=True)
 
 # Main content
-st.markdown("<h1 class='main-header'>👥 RecruitEase: Multi-Agent Recruiting System</h1>", unsafe_allow_html=True)
+st.markdown("<h1 class='main-header'>👥 HirEase: Automated Job Screening with AI & Data Intelligence</h1>", unsafe_allow_html=True)
 
 # Step 1: Job Description Analysis
 if st.session_state['current_step'] == 1:
