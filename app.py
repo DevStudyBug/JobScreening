@@ -1,12 +1,15 @@
 import streamlit as st
 import google.generativeai as genai
 import os
-import PyPDF2 as pdf
+import PyPDF2
 from dotenv import load_dotenv
 import json
 import requests
 from datetime import datetime, timedelta
-
+import pandas as pd
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 # Load environment variables
 load_dotenv()
 
